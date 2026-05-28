@@ -3,13 +3,12 @@ from fastapi import APIRouter, UploadFile, File, Depends
 from sqlalchemy.orm import Session
 import uuid
 
-from core.errors import error_timeout, error_ocr, error_ai, error_generico
+from core.errors import error_timeout, error_ai, error_generico
 from core.database import get_db, Factura, init_db
 from core.auth import obtener_usuario_actual
 from services.file_handler import procesar_archivo
 from services.preprocessor import preprocesar_imagen
-from services.ocr import extraer_texto
-from services.ai import analizar_con_qwen
+from services.ai import analizar_con_llava
 from utils.validators import validar_invoice
 import httpx
 from fastapi import Request
@@ -41,38 +40,27 @@ async def escanear_factura(
 
     # PASO 3
     try:
-        texto = extraer_texto(imagen_procesada)
-        print(f"✅ PASO 3 OK - Texto extraído: {texto[:100]}")
+        datos_llava = await analizar_con_llava(imagen_procesada)
+        print(f"✅ PASO 3 OK - LLaVA respondió: {datos_llava}")
+    except httpx.TimeoutException:
+        print("❌ PASO 3 FALLÓ: Timeout")
+        error_timeout()
     except ValueError as e:
-        print(f"❌ PASO 3 FALLÓ (OCR): {e}")
-        error_ocr()
+        print(f"❌ PASO 3 FALLÓ (ValueError): {e}")
+        error_ai()
     except Exception as e:
         print(f"❌ PASO 3 FALLÓ (otro): {e}")
-        error_generico(f"Error en OCR: {str(e)}")
+        error_ai()
 
     # PASO 4
     try:
-        datos_qwen = await analizar_con_qwen(texto)
-        print(f"✅ PASO 4 OK - Qwen respondió: {datos_qwen}")
-    except httpx.TimeoutException:
-        print("❌ PASO 4 FALLÓ: Timeout")
-        error_timeout()
+        datos_validados = validar_invoice(datos_llava)
+        print(f"✅ PASO 4 OK - Validación exitosa: {datos_validados}")
     except ValueError as e:
-        print(f"❌ PASO 4 FALLÓ (ValueError): {e}")
-        error_ai()
-    except Exception as e:
-        print(f"❌ PASO 4 FALLÓ (otro): {e}")
+        print(f"❌ PASO 4 FALLÓ: {e}")
         error_ai()
 
     # PASO 5
-    try:
-        datos_validados = validar_invoice(datos_qwen)
-        print(f"✅ PASO 5 OK - Validación exitosa: {datos_validados}")
-    except ValueError as e:
-        print(f"❌ PASO 5 FALLÓ: {e}")
-        error_ai()
-
-    # PASO 6
     try:
         factura_id = str(uuid.uuid4())
         nueva_factura = Factura(
@@ -83,9 +71,9 @@ async def escanear_factura(
         db.add(nueva_factura)
         db.commit()
         db.refresh(nueva_factura)
-        print("✅ PASO 6 OK - Guardado en BD")
+        print("✅ PASO 5 OK - Guardado en BD")
     except Exception as e:
-        print(f"❌ PASO 6 FALLÓ: {e}")
+        print(f"❌ PASO 5 FALLÓ: {e}")
         error_generico(f"Error al guardar: {str(e)}")
 
     return {

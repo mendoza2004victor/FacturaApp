@@ -4,13 +4,13 @@
 # Ollama corre localmente en este puerto por defecto
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
-# Modelo que usamos - Qwen 2.5 1.5B
-OLLAMA_MODEL = "qwen2.5:1.5b"
+# Modelo que usamos - LLaVA 7B
+OLLAMA_MODEL = "llava:7b"
 
 # Timeouts por paso del pipeline (en segundos)
 TIMEOUT_PREPROCESAMIENTO = 3
 TIMEOUT_OCR = 8
-TIMEOUT_QWEN = 15
+TIMEOUT_OLLAMA = 20
 
 # Mínimo de caracteres que debe extraer el OCR para considerarse válido
 MIN_TEXTO_OCR = 20

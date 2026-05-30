@@ -7,7 +7,6 @@ from core.errors import error_timeout, error_ai, error_generico
 from core.database import get_db, Factura, init_db
 from core.auth import obtener_usuario_actual
 from services.file_handler import procesar_archivo
-from services.preprocessor import preprocesar_imagen
 from services.ai import analizar_con_llava
 from utils.validators import validar_invoice
 import httpx
@@ -32,35 +31,27 @@ async def escanear_factura(
 
     # PASO 2
     try:
-        imagen_procesada = preprocesar_imagen(imagen)
-        print("✅ PASO 2 OK - Preprocesamiento listo")
+        datos_llava = await analizar_con_llava(imagen)
+        print(f"✅ PASO 2 OK - LLaVA respondió: {datos_llava}")
+    except httpx.TimeoutException:
+        print("❌ PASO 2 FALLÓ: Timeout")
+        error_timeout()
+    except ValueError as e:
+        print(f"❌ PASO 2 FALLÓ (ValueError): {e}")
+        error_ai()
     except Exception as e:
-        print(f"❌ PASO 2 FALLÓ: {e}")
-        error_generico(f"Error en preprocesamiento: {str(e)}")
+        print(f"❌ PASO 2 FALLÓ (otro): {e}")
+        error_ai()
 
     # PASO 3
     try:
-        datos_llava = await analizar_con_llava(imagen_procesada)
-        print(f"✅ PASO 3 OK - LLaVA respondió: {datos_llava}")
-    except httpx.TimeoutException:
-        print("❌ PASO 3 FALLÓ: Timeout")
-        error_timeout()
+        datos_validados = validar_invoice(datos_llava)
+        print(f"✅ PASO 3 OK - Validación exitosa: {datos_validados}")
     except ValueError as e:
-        print(f"❌ PASO 3 FALLÓ (ValueError): {e}")
-        error_ai()
-    except Exception as e:
-        print(f"❌ PASO 3 FALLÓ (otro): {e}")
+        print(f"❌ PASO 3 FALLÓ: {e}")
         error_ai()
 
     # PASO 4
-    try:
-        datos_validados = validar_invoice(datos_llava)
-        print(f"✅ PASO 4 OK - Validación exitosa: {datos_validados}")
-    except ValueError as e:
-        print(f"❌ PASO 4 FALLÓ: {e}")
-        error_ai()
-
-    # PASO 5
     try:
         factura_id = str(uuid.uuid4())
         nueva_factura = Factura(
@@ -71,9 +62,9 @@ async def escanear_factura(
         db.add(nueva_factura)
         db.commit()
         db.refresh(nueva_factura)
-        print("✅ PASO 5 OK - Guardado en BD")
+        print("✅ PASO 4 OK - Guardado en BD")
     except Exception as e:
-        print(f"❌ PASO 5 FALLÓ: {e}")
+        print(f"❌ PASO 4 FALLÓ: {e}")
         error_generico(f"Error al guardar: {str(e)}")
 
     return {
